@@ -1,6 +1,5 @@
 const fetch = require('node-fetch')
 const xml2js = require('xml2js')
-const { unionBy } = require('lodash/array')
 
 const express = require('express')
 const app = express()
@@ -30,28 +29,29 @@ const getViolations = async () => {
             const y = parseFloat(drone.positionY[0])
             const xDistance = x - ndzCenter.x
             const yDistance = y - ndzCenter.y
+            const distance = Math.hypot(xDistance, yDistance) / 1000
             return {
-                x: x,
-                y: y,
-                distance: Math.hypot(xDistance, yDistance) / 1000,
+                distance: distance,
+                violating: distance <= 100 ? true : false,
                 serialNumber: drone.serialNumber[0],
                 timestamp: new Date(),
             }
         })
 
         // Get the violating drones by checking if the distance is within 100 meters of the nesting site
-        const violations = drones.filter((drone) => drone.distance <= 100)
+        const violations = drones.filter((drone) => drone.violating)
 
-        // Update the violation information with a violation timestamp
-        const violationsWithTimestamps = violations.map((drone) => {
-            return {
-                ...drone,
-                violation_timestamp: new Date(),
-            }
-        })
+        // Filter out old violations
+        const newViolations = violations.filter(
+            (violation) =>
+                !NDZviolations.some(
+                    (oldViolation) =>
+                        violation.serialNumber === oldViolation.serialNumber
+                )
+        )
 
         // Get the contact information for the pilots of the violating drones
-        const pilotsPromise = violationsWithTimestamps.map(async (drone) => {
+        const pilotsPromise = newViolations.map(async (drone) => {
             try {
                 // Make a GET request to the pilot registry endpoint
                 const pilotResponse = await fetch(
@@ -71,51 +71,37 @@ const getViolations = async () => {
             }
         })
 
-        const violationsWithPilots = await Promise.all(pilotsPromise)
-        console.log('new')
-        console.log(violationsWithPilots)
-        console.log('---')
+        const newViolationsWithPilots = await Promise.all(pilotsPromise)
 
-        // Filter out new violations from violations list
-        const oldViolations = NDZviolations.filter(
-            (oldViolation) =>
-                !violationsWithPilots.some(
-                    (violation) =>
-                        violation.serialNumber === oldViolation.serialNumber
-                )
-        )
-        console.log('old')
-        console.log(oldViolations)
-        console.log('---')
-
-        /* // Update NDZviolations with new violation data
+        // Update NDZviolations with new  data if necessary
         const updatedViolations = NDZviolations.map((oldViolation) => {
-            const newViolation = violationsWithPilots.find(
-                (violation) =>
-                    violation.serialNumber === oldViolation.serialNumber
+            const newData = drones.find(
+                (drone) => drone.serialNumber === oldViolation.serialNumber
             )
-            if (newViolation) {
-                return newViolation
-                // TODO, do something about the distance
+            if (newData) {
+                return {
+                    ...oldViolation,
+                    timestamp: newData.timestamp,
+                    distance: Math.min(newData.distance, oldViolation.distance),
+                    violating: newData.distance <= 100 ? true : false,
+                }
             }
             return oldViolation
-        }) */
+        })
 
-        // Combine old violations with new violations with loadash unionBy
-        /* NDZviolations = unionBy(
-            violationsWithPilots,
-            NDZviolations,
-            'serialNumber'
-        ).filter(
-            (violation) => Date.now() - violation.timestamp <= 10 * 60 * 1000
-        ) */
+        // Update NDZviolations with new violation data
+        // filter out drones not detected in 10 minutes
+        // Sort violations by time detected
+        NDZviolations = [...updatedViolations, ...newViolationsWithPilots]
+            .filter(
+                (violation) =>
+                    Date.now() - violation.timestamp <= 10 * 60 * 1000
+            )
+            .sort((a, b) => {
+                return new Date(b.timestamp) - new Date(a.timestamp)
+            })
 
-        // Update NDZviolations with new violation data and filter out drones not seen in 10 minutes
-        NDZviolations = [...oldViolations, ...violationsWithPilots].filter(
-            (violation) => Date.now() - violation.timestamp <= 10 * 60 * 1000
-        )
-
-        console.log(NDZviolations)
+        //console.log(NDZviolations)
     } catch (error) {
         // Error retrieving drone data
         console.log(error)

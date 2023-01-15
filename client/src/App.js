@@ -14,7 +14,7 @@ const App = () => {
         return () => clearInterval(interval)
     }, [])
 
-    if (drones) {
+    if (drones[0]) {
         return (
             <div className='App'>
                 <h1>NDZ violations in last 10 min</h1>
@@ -26,13 +26,19 @@ const App = () => {
                             <th>Phone</th>
                             <th>Email</th>
                             <th>Closest Distance</th>
-                            <th>Current Distance</th>
                             <th>Last Detected</th>
                         </tr>
                     </thead>
                     <tbody>
                         {drones.map((drone) => (
-                            <tr key={drone.serialNumber}>
+                            <tr
+                                key={drone.serialNumber}
+                                style={{
+                                    backgroundColor: drone.violating
+                                        ? '#f48989'
+                                        : '',
+                                }}
+                            >
                                 <td>
                                     {drone.pilot.firstName}{' '}
                                     {drone.pilot.lastName}
@@ -40,7 +46,6 @@ const App = () => {
                                 <td>{drone.pilot.phoneNumber}</td>
                                 <td>{drone.pilot.email}</td>
                                 <td>{drone.distance.toFixed(2)} m</td>
-                                <td>{drone.closest_distance.toFixed(2)} m</td>
                                 <td>
                                     {new Date(drone.timestamp).toLocaleString(
                                         'en-GB',
