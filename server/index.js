@@ -3,6 +3,7 @@ const xml2js = require('xml2js')
 
 const express = require('express')
 const app = express()
+app.use(express.static('build'))
 
 const cors = require('cors')
 app.use(cors())
